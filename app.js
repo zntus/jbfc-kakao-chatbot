@@ -7,6 +7,7 @@ const compression = require('compression')
 const axios = require('axios')
 const {JSDOM} = require('jsdom')
 const moment = require("moment-timezone")
+const cache = require('./cache.js')
 const awsServerlessExpressMiddleware = require('aws-serverless-express/middleware')
 const app = express()
 const router = express.Router()
@@ -27,90 +28,158 @@ router.get('/', (req, res) => {
   })
 })
 
-router.all('/matches/today', (req, res) => {
+router.all('/matches/today', (_req, res) => {
   const todayDate = new Date()
+  const koreanTodayDate = moment(todayDate.getTime()).tz("Asia/Seoul")
+  const MatchDateStr = koreanTodayDate.format("YYYY-MM-DD")
   const club = 1
   const leagues = [1,99,2]
-  let msg
+  let response = new chatbotResponse()
 
-  getMatchByDateAndLeagues(leagues, club, todayDate)
-  .then(match => msg = match)
+  cache.get('jbfc_match_by_date', MatchDateStr, () => getMatchByDateAndLeagues(leagues, club, todayDate))
+  .then(match => {
+    response.output(match.msg, [
+      {
+        "action": "block",
+        "label": "라인업",
+        "blockId": "5d7d48eeffa7480001c23697"
+      }
+    ]).context([{
+      "name": "game",
+      "lifeSpan": 1,
+      "params": {
+        "gs_idx": match.gs_idx.toString()
+      }
+    }])
+  })
   .catch(reason => {
     switch(reason){
       case 'no_match':
-        msg = '오늘 경기가 없습니다'
+        response.output('오늘 경기가 없습니다')
         break
       default :
-        msg = '현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
     }
   })
   .finally(() => {
-    const responseBody = {
-      "version": "2.0",
-      "data": {
-        "msg": msg
-      }
-    }
-  
-    res.status(200).send(responseBody)
+    res.status(200).send(response.toBody())
   })
 })
 
-router.all('/matches/next', (req, res) => {
+router.all('/matches/next', (_req, res) => {
   const todayDate = new Date()
+  const koreanTodayDate = moment(todayDate.getTime()).tz("Asia/Seoul")
+  const MatchDateStr = koreanTodayDate.format("YYYY-MM-DD")
   const club = 1
   const leagues = [1,99,2]
-  let msg
+  let response = new chatbotResponse()
 
-  getNextMatchByDateAndLeagues(leagues, club, todayDate)
-  .then(match => msg = match)
+  cache.get('jbfc_next_match_by_date', MatchDateStr, () => getNextMatchByDateAndLeagues(leagues, club, todayDate))
+  .then(match => {
+    response.output(match.msg, [
+      {
+        "action": "block",
+        "label": "라인업",
+        "blockId": "5d7d48eeffa7480001c23697"
+      }
+    ]).context([{
+      "name": "game",
+      "lifeSpan": 1,
+      "params": {
+        "gs_idx": match.gs_idx.toString()
+      }
+    }])
+  })
   .catch(reason => {
     switch(reason){
       case 'no_match':
-        msg = '경기 일정이 없습니다'
+        response.output('경기 일정이 없습니다')
         break
       default :
-        msg = '현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
     }
   })
   .finally(() => {
-    const responseBody = {
-      "version": "2.0",
-      "data": {
-        "msg": msg
-      }
-    }
-  
-    res.status(200).send(responseBody)
+    res.status(200).send(response.toBody())
   })
 })
 
-router.all('/matches/last', (req, res) => {
+router.all('/matches/last', (_req, res) => {
   const todayDate = new Date()
+  const koreanTodayDate = moment(todayDate.getTime()).tz("Asia/Seoul")
+  const MatchDateStr = koreanTodayDate.format("YYYY-MM-DD")
   const club = 1
   const leagues = [1,99,2]
-  let msg
+  let response = new chatbotResponse()
 
-  getLastMatchByDateAndLeagues(leagues, club, todayDate)
-  .then(match => msg = match)
+  cache.get('jbfc_last_match_by_date', MatchDateStr, () => getLastMatchByDateAndLeagues(leagues, club, todayDate))
+  .then(match => {
+    response.output(match.msg, [
+      {
+        "action": "block",
+        "label": "라인업",
+        "blockId": "5d7d48eeffa7480001c23697"
+      }
+    ]).context([{
+      "name": "game",
+      "lifeSpan": 1,
+      "params": {
+        "gs_idx": match.gs_idx.toString()
+      }
+    }])
+  })
   .catch(reason => {
     switch(reason){
       case 'no_match':
-        msg = '지난 경기가 없습니다'
+        response.output('지난 경기가 없습니다')
         break
       default :
-        msg = '현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
     }
   })
   .finally(() => {
-    const responseBody = {
-      "version": "2.0",
-      "data": {
-        "msg": msg
-      }
-    }
+    res.status(200).send(response.toBody())
+  })
+})
+
+router.all('/lineup', (req, res) => {
+  const gsIdx = req.body.action.params.gs_idx
+  let response = new chatbotResponse()
   
-    res.status(200).send(responseBody)
+  cache.get('jbfc_lineup_by_gsidx', gsIdx.toString(), () => getLineUpByGsIdx(gsIdx))
+  .then(lineup => response.output(lineup.msg))
+  .catch(reason => {
+    switch(reason){
+      case 'no_lineup':
+        response.output('라인업이 공개되지 않았습니다.')
+        break
+      default :
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response.toBody())
+  })
+})
+
+router.all('/matches/:gs_idx/lineup/:team_class', (req, res) => {
+  const gsIdx = req.params['gs_idx']
+  const teamClass = req.params['team_class']
+  let response = new chatbotResponse()
+
+  cache.get('lineup_by_gsidx_'+teamClass, gsIdx.toString(), () => getLineUpByGsIdxAndTeam(gsIdx, teamClass))
+  .then(lineup => response.output(lineup.msg))
+  .catch(reason => {
+    switch(reason){
+      case 'no_lineup':
+        response.output('라인업이 공개되지 않았습니다.')
+        break
+      default :
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response.toBody())
   })
 })
 
@@ -152,6 +221,8 @@ function getNextMatchByDateAndLeagues(leagueNums, clubNum, matchDate) {
   const koreanMatchDate = moment(matchDate.getTime()).tz("Asia/Seoul")
   const year = koreanMatchDate.format("YYYY")
   const month = koreanMatchDate.format("MM")
+  const day = koreanMatchDate.format("DD")
+  const koreanMatchDateTimestamp = (new Date(year+'-'+month+'-'+day+'T'+'23:59:59+09:00')).getTime()
   const url = 'http://www.kleague.com/schedule/get_lists?datatype=html&select_league_year='+year+'&month='+month+'&select_club='+clubNum
   return Promise.all(leagueNums.map(league => url+'&select_league='+league).map(u => axios.get(u)))
   .then(res => res.map(r => new JSDOM(r.data)))
@@ -165,7 +236,7 @@ function getNextMatchByDateAndLeagues(leagueNums, clubNum, matchDate) {
     if(matchDocs.length < 1) {
       return Promise.reject('no_match')
     } else {
-      return Array.prototype.filter.apply(matchDocs, [(dayDoc) => (new Date(dayDocToTimestamp(dayDoc))) > matchDate])
+      return Array.prototype.filter.apply(matchDocs, [(dayDoc) => dayDocToTimestamp(dayDoc) > koreanMatchDateTimestamp])
     }
   })
   .then(matchDocs => {
@@ -181,6 +252,8 @@ function getLastMatchByDateAndLeagues(leagueNums, clubNum, matchDate) {
   const koreanMatchDate = moment(matchDate.getTime()).tz("Asia/Seoul")
   const year = koreanMatchDate.format("YYYY")
   const month = koreanMatchDate.format("MM")
+  const day = koreanMatchDate.format("DD")
+  const koreanMatchDateTimestamp = (new Date(year+'-'+month+'-'+day+'T'+'00:00:00+09:00')).getTime()
   const url = 'http://www.kleague.com/schedule/get_lists?datatype=html&select_league_year='+year+'&month='+month+'&select_club='+clubNum
   return Promise.all(leagueNums.map(league => url+'&select_league='+league).map(u => axios.get(u)))
   .then(res => res.map(r => new JSDOM(r.data)))
@@ -194,7 +267,7 @@ function getLastMatchByDateAndLeagues(leagueNums, clubNum, matchDate) {
     if(matchDocs.length < 1) {
       return Promise.reject('no_match')
     } else {
-      return Array.prototype.filter.apply(matchDocs, [(dayDoc) => (new Date(dayDocToTimestamp(dayDoc))) < matchDate])
+      return Array.prototype.filter.apply(matchDocs, [(dayDoc) => dayDocToTimestamp(dayDoc) < koreanMatchDateTimestamp])
     }
   })
   .then(matchDocs => {
@@ -206,13 +279,75 @@ function getLastMatchByDateAndLeagues(leagueNums, clubNum, matchDate) {
   })
 }
 
+function getLineUpByGsIdx(gsIdx) {
+  const url = 'http://www.kleague.com/match?vw=history&gs_idx=' + gsIdx
+  return axios.get(url)
+  .then(res => new JSDOM(res.data))
+  .then(doc => doc.window.document)
+  .then(doc => {
+    let team
+    if(doc.querySelectorAll('table.lineup-head th')[0].querySelector('span.name').textContent == '전북') {
+      team = 'homeLineUp'
+    } else {
+      team = 'awayLineUp'
+    }
+    return [team, doc]
+  })
+  .then(([team, doc]) => [team, doc.querySelectorAll('div.lineup-body > ul')])
+  .then(([team, lineUpBodyDocs]) => {
+    if(lineUpBodyDocs.length > 0) {
+      const lineUpDocs = domToArray(lineUpBodyDocs)
+      const gkLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('gk'))[0]
+      const dfLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('df'))[0]
+      const mfLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('mf'))[0]
+      const fwLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('fw'))[0]
+      const gkPlayers = lineUpDocToPlayerNames(gkLineUpDoc, team).filter(name => name != '').map(name => 'GK. '+name).join('\n')
+      const dfPlayers = lineUpDocToPlayerNames(dfLineUpDoc, team).filter(name => name != '').map(name => 'DF. '+name).join('\n')
+      const mfPlayers = lineUpDocToPlayerNames(mfLineUpDoc, team).filter(name => name != '').map(name => 'MF. '+name).join('\n')
+      const fwPlayers = lineUpDocToPlayerNames(fwLineUpDoc, team).filter(name => name != '').map(name => 'FW. '+name).join('\n')
+      return {msg: [gkPlayers, dfPlayers, mfPlayers, fwPlayers].join('\n\n')}
+    } else {
+      return Promise.reject('no_lineup')
+    }
+  })
+}
+
+function getLineUpByGsIdxAndTeam(gsIdx, team) {
+  const url = 'http://www.kleague.com/match?vw=history&gs_idx=' + gsIdx
+  const teamClass = team == 'home' ? 'homeLineUp' : 'awayLineUp'
+  return axios.get(url)
+  .then(res => new JSDOM(res.data))
+  .then(doc => doc.window.document)
+  .then(doc => doc.querySelectorAll('div.lineup-body > ul'))
+  .then(lineUpBodyDocs => {
+    if(lineUpBodyDocs.length > 0) {
+      const lineUpDocs = domToArray(lineUpBodyDocs)
+      const gkLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('gk'))[0]
+      const dfLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('df'))[0]
+      const mfLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('mf'))[0]
+      const fwLineUpDoc = lineUpDocs.filter(d => d.getAttribute('class').split(' ').includes('fw'))[0]
+      const gkPlayers = lineUpDocToPlayerNames(gkLineUpDoc, teamClass).filter(name => name != '').map(name => 'GK. '+name).join('\n')
+      const dfPlayers = lineUpDocToPlayerNames(dfLineUpDoc, teamClass).filter(name => name != '').map(name => 'DF. '+name).join('\n')
+      const mfPlayers = lineUpDocToPlayerNames(mfLineUpDoc, teamClass).filter(name => name != '').map(name => 'MF. '+name).join('\n')
+      const fwPlayers = lineUpDocToPlayerNames(fwLineUpDoc, teamClass).filter(name => name != '').map(name => 'FW. '+name).join('\n')
+      return {msg: [gkPlayers, dfPlayers, mfPlayers, fwPlayers].join('\n\n')}
+    } else {
+      return Promise.reject('no_lineup')
+    }
+  })
+}
+
 function parseDayDoc(dayDoc) {
   const round = dayDocToRound(dayDoc)
   const versus = dayDocToVersus(dayDoc)
   const broadcasting = dayDocToBroadcasting(dayDoc)
   const stadium = dayDocToStadium(dayDoc)
   const matchDate = dayDocToMatchDateStr(dayDoc)
-  return [round, versus, broadcasting, stadium, matchDate].filter(v => v != null).join('\n')
+  const gsIdx = dayDocToGSIdx(dayDoc)
+  return {
+    msg: [round, versus, broadcasting, stadium, matchDate].filter(v => v != null).join('\n'),
+    gs_idx: gsIdx
+  }
 }
 
 function dayDocToRound(dayDoc) {
@@ -251,6 +386,16 @@ function dayDocToMatchDateStr(dayDoc) {
   return koreanMatchDate.format("YYYY-MM-DD HH:mm")
 }
 
+function dayDocToGSIdx(dayDoc) {
+  const gsIdxBtn = dayDoc.querySelectorAll('td.btn-match button.btn_matchcenter')
+  if(gsIdxBtn.length < 1) return null
+  else return gsIdxBtn[0].getAttribute('gs_idx')
+}
+
+function lineUpDocToPlayerNames(lineUpDoc, teamClass) {
+  return Array.prototype.map.apply(lineUpDoc.querySelectorAll('div.' + teamClass + ' span.name'), [playerNameDoc => playerNameDoc.textContent.trim()])
+}
+
 function domToArray(dom) {
   var arr = []
   dom.forEach(e => arr.push(e))
@@ -265,6 +410,46 @@ function nextMonthFirstDate(date) {
 
 function previousMonthLastDate(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1-1, 0)
+}
+
+function chatbotResponse() {
+  this.data = {
+    "version": "2.0",
+    "template": { "outputs": [] },
+    "context": { "values": [] }
+  }
+
+  this.output = function (msg, buttons) {
+    if (buttons == undefined) {
+      this.data.template.outputs = [
+        {
+          "simpleText": {
+            "text": msg
+          }
+        }
+      ]
+    } else {
+      this.data.template.outputs = [
+        {
+          "basicCard": {
+            "description": msg,
+            "buttons": buttons
+          }
+        }
+      ]
+    }
+
+    return this
+  }
+
+  this.context = function (values) {
+    this.data.context.values = values
+    return this
+  }
+
+  this.toBody = function() {
+    return this.data
+  }
 }
 
 // The aws-serverless-express library creates a server and listens on a Unix

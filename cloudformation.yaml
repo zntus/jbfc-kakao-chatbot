@@ -32,7 +32,11 @@ Resources:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
-            Resource: arn:aws:logs:*:*:*
+            - dynamodb:GetItem 
+            - dynamodb:PutItem 
+            Resource: 
+              - arn:aws:logs:*:*:*
+              - arn:aws:dynamodb:ap-northeast-2:462389766440:table/JBFCCache
 
   LambdaApiGatewayExecutionPermission:
     Type: AWS::Lambda::Permission
@@ -72,6 +76,25 @@ Resources:
             RestApiId: !Ref ApiGatewayApi
             Path: /{proxy+}
             Method: ANY
+  
+  DDBCache:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - AttributeName: 'cache_type'
+          AttributeType: 'S'
+        - AttributeName: 'cache_key'
+          AttributeType: 'S'
+      BillingMode: 'PAY_PER_REQUEST'
+      KeySchema: 
+        - AttributeName: 'cache_type'
+          KeyType: 'HASH'
+        - AttributeName: 'cache_key'
+          KeyType: 'RANGE'
+      TableName: 'JBFCCache'
+      TimeToLiveSpecification: 
+          AttributeName: 'expire_at'
+          Enabled: true
 
 Outputs:
   LambdaFunctionConsoleUrl:
@@ -107,3 +130,8 @@ Outputs:
         - ".execute-api."
         - !Ref AWS::Region
         - ".amazonaws.com/prod/"
+
+  DDBCache:
+    Description: DynamoDB For Cache.
+    Value: !Ref DDBCache
+
