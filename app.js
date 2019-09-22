@@ -39,6 +39,10 @@ router.all('/matches/today', (_req, res) => {
         "action": "block",
         "label": "라인업",
         "blockId": "5d7d48eeffa7480001c23697"
+      }, {
+        "action": "block",
+        "label": "심판",
+        "blockId": "5d86b373ffa74800015154be"
       }
     ]).context([{
       "name": "game",
@@ -72,6 +76,10 @@ router.all('/matches/next', (_req, res) => {
         "action": "block",
         "label": "라인업",
         "blockId": "5d7d48eeffa7480001c23697"
+      }, {
+        "action": "block",
+        "label": "심판",
+        "blockId": "5d86b373ffa74800015154be"
       }
     ]).context([{
       "name": "game",
@@ -105,6 +113,10 @@ router.all('/matches/last', (_req, res) => {
         "action": "block",
         "label": "라인업",
         "blockId": "5d7d48eeffa7480001c23697"
+      }, {
+        "action": "block",
+        "label": "심판",
+        "blockId": "5d86b373ffa74800015154be"
       }
     ]).context([{
       "name": "game",
@@ -138,6 +150,9 @@ router.all('/lineup', (req, res) => {
   .then(lineup => response.output(kleague.lineUpToString(lineup)))
   .catch(reason => {
     switch(reason){
+      case 'no_game_id':
+        response.output('어떤 경기에 대해 물어 보셨는지 모르겠어요.')
+        break
       case 'no_lineup':
         response.output('라인업이 공개되지 않았습니다.')
         break
@@ -160,8 +175,61 @@ router.all('/matches/:game_id/lineup', (req, res) => {
   .then(lineup => response.output(kleague.lineUpToString(lineup)))
   .catch(reason => {
     switch(reason){
+      case 'no_game_id':
+        response.output('어떤 경기에 대해 물어 보셨는지 모르겠어요.')
+        break
       case 'no_lineup':
         response.output('라인업이 공개되지 않았습니다.')
+        break
+      default :
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response.toBody())
+  })
+})
+
+router.all('/referees', (req, res) => {
+  const gameId = req.body.action.params.game_id
+  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+  const matchYear = koreanMatchDate.format("YYYY")
+  let response = new chatbotResponse()
+  
+  kleague.getReferees(matchYear, gameId)
+  .then(referees => response.output(referees))
+  .catch(reason => {
+    switch(reason){
+      case 'no_game_id':
+        response.output('어떤 경기에 대해 물어 보셨는지 모르겠어요.')
+        break
+      case 'no_referees':
+        response.output('심판이 공개되지 않았습니다.')
+        break
+      default :
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response.toBody())
+  })
+})
+
+router.all('/matches/:game_id/referees', (req, res) => {
+  const gameId = req.params['game_id']
+  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+  const matchYear = koreanMatchDate.format("YYYY")
+  let response = new chatbotResponse()
+
+  kleague.getReferees(matchYear, gameId)
+  .then(referees => response.output(referees))
+  .catch(reason => {
+    switch(reason){
+      case 'no_game_id':
+        response.output('어떤 경기에 대해 물어 보셨는지 모르겠어요.')
+        break
+      case 'no_referees':
+        response.output('심판이 공개되지 않았습니다.')
         break
       default :
         response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')

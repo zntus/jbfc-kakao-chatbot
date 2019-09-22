@@ -137,7 +137,7 @@ function _getLastMatch(clubName, matchDate, count = 1) {
 }
 
 exports.getLineUp = (clubName, matchYear, gameId) => {
-  return cache.get('lineup-'+clubName, matchYear + '-' +gameId, () => _getLineUp(clubName, matchYear, gameId)) 
+  return cache.get('lineup-' + clubName, matchYear + '-' + gameId, () => _getLineUp(clubName, matchYear, gameId)) 
 }
 
 function _getLineUp(clubName, matchYear, gameId) {
@@ -148,31 +148,71 @@ function _getLineUp(clubName, matchYear, gameId) {
     mainGameId: gameId
   }
 
-  return getSession()
-  .then(session => axios.post(url, querystring.stringify(param), {headers: {'Cookie': session}}))
-  .then(res => new JSDOM(res.data))
-  .then(doc => doc.window.document)
-  .then(doc => {
-    const home = doc.querySelector('#btnHomeTeam')
-    const away = doc.querySelector('#btnAwayTeam')
-    let playerDocs;
+  if (gameId == null || gameId == undefined) {
+    return Promise.reject('no_game_id')
+  } else {
+    return getSession()
+    .then(session => axios.post(url, querystring.stringify(param), {headers: {'Cookie': session}}))
+    .then(res => new JSDOM(res.data))
+    .then(doc => doc.window.document)
+    .then(doc => {
+      const home = doc.querySelector('#btnHomeTeam')
+      const away = doc.querySelector('#btnAwayTeam')
+      let playerDocs;
 
-    if (home == null || away == null) {
-      return Promise.reject('no_lineup')
-    } else if (home.textContent == clubName) {
-      playerDocs = domToArray(doc.querySelectorAll('#ulHomeList li'))
-    } else if (away.textContent == clubName) {
-      playerDocs = domToArray(doc.querySelectorAll('#ulAwayList li'))
-    }
+      if (home == null || away == null) {
+        return Promise.reject('no_lineup')
+      } else if (home.textContent == clubName) {
+        playerDocs = domToArray(doc.querySelectorAll('#ulHomeList li'))
+      } else if (away.textContent == clubName) {
+        playerDocs = domToArray(doc.querySelectorAll('#ulAwayList li'))
+      }
 
-    return playerDocs.map(e => {
-      return {
-        number: parseInt(e.querySelector('span.match-live-txt').textContent),
-        position: e.querySelector('span.match-live-txt03').textContent,
-        name: e.querySelector('span.match-live-txt02').textContent,
+      return playerDocs.map(e => {
+        return {
+          number: parseInt(e.querySelector('span.match-live-txt').textContent),
+          position: e.querySelector('span.match-live-txt03').textContent,
+          name: e.querySelector('span.match-live-txt02').textContent,
+        }
+      })
+    })
+  }
+}
+
+exports.getReferees = (matchYear, gameId) => {
+  return cache.get('referees', matchYear + '-' + gameId, () => _getReferees(matchYear, gameId)) 
+}
+
+function _getReferees(matchYear, gameId) {
+  const url = 'http://portal.kleague.com/mainFrame.do'
+  const param = {
+    selectedMenuCd: '0301',
+    mainMeetYear: matchYear,
+    mainGameId: gameId
+  }
+
+  if (gameId == null || gameId == undefined) {
+    return Promise.reject('no_game_id')
+  } else {
+    return getSession()
+    .then(session => axios.post(url, querystring.stringify(param), {headers: {'Cookie': session}}))
+    .then(res => new JSDOM(res.data))
+    .then(doc => doc.window.document)
+    .then(doc => {
+      const data = doc.querySelectorAll('div.match-prame-box li')
+      if (data.length < 5) {
+        return Promise.reject('no_referees')
+      } else {
+        const mainReferee = data[4].querySelectorAll('span')[1].textContent.trim()
+        const referees = data[4].querySelectorAll('span')[1].getAttribute('title').split('\r')
+        if(mainReferee == '') {
+          return Promise.reject('no_referees')
+        } else {
+          return ['주심 : '+mainReferee].concat(referees).join('\n')
+        }
       }
     })
-  })
+  }
 }
 
 exports.matchToString = (club) => {
