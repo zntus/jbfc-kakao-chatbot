@@ -4,8 +4,6 @@ const express = require('express')
 const bodyParser = require('body-parser')
 const cors = require('cors')
 const compression = require('compression')
-const axios = require('axios')
-const {JSDOM} = require('jsdom')
 const moment = require("moment-timezone")
 const cache = require('./cache.js')
 const awsServerlessExpressMiddleware = require('aws-serverless-express/middleware')
@@ -46,7 +44,7 @@ router.all('/matches/today', (_req, res) => {
       }
     ]).context([{
       "name": "game",
-      "lifeSpan": 1,
+      "lifeSpan": 5,
       "params": {
         "game_id": match.gameid.toString()
       }
@@ -71,19 +69,11 @@ router.all('/matches/next', (_req, res) => {
 
   kleague.getNextMatch('전북', new Date())
   .then(match => {
-    response.output(kleague.matchToString(match), [
-      {
-        "action": "block",
-        "label": "라인업",
-        "blockId": "5d7d48eeffa7480001c23697"
-      }, {
-        "action": "block",
-        "label": "심판",
-        "blockId": "5d86b373ffa74800015154be"
-      }
-    ]).context([{
+    response
+    .output(kleague.matchToString(match), [])
+    .context([{
       "name": "game",
-      "lifeSpan": 1,
+      "lifeSpan": 5,
       "params": {
         "game_id": match.gameid.toString()
       }
@@ -120,7 +110,7 @@ router.all('/matches/last', (_req, res) => {
       }
     ]).context([{
       "name": "game",
-      "lifeSpan": 1,
+      "lifeSpan": 5,
       "params": {
         "game_id": match.gameid.toString()
       }
@@ -232,6 +222,24 @@ router.all('/matches/:game_id/referees', (req, res) => {
         response.output('심판이 공개되지 않았습니다.')
         break
       default :
+        response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response.toBody())
+  })
+})
+
+router.all('/ranking/:league', (req, res) => {
+  const leagueNum = req.params['league']
+  let response = new chatbotResponse()
+
+  kleague.getRanking(leagueNum, new Date())
+  .then(ranking => response.output(kleague.rankingToString(leagueNum, ranking)))
+  .catch(reason => {
+    switch(reason){
+      default :
+        console.log('Error: ', reason)
         response.output('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.')
     }
   })

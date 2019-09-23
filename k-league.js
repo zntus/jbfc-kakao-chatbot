@@ -215,6 +215,47 @@ function _getReferees(matchYear, gameId) {
   }
 }
 
+exports.getRanking = (leagueNum, rankingDate) => {
+  const koreanMatchDate = moment(rankingDate.getTime()).tz("Asia/Seoul")
+  const date = koreanMatchDate.format("YYYYMMDD")
+  return cache.get('league-'+leagueNum+'-ranking', date, () => _getRanking(leagueNum, rankingDate)) 
+}
+
+function _getRanking(leagueNum, rankingDate) {
+  const url = 'http://portal.kleague.com/common/search/change.do'
+  const koreanMatchDate = moment(rankingDate.getTime()).tz("Asia/Seoul")
+  const searchYear = koreanMatchDate.format("YYYY")
+  const searchDate = koreanMatchDate.format("YYYY/MM/DD")
+  const league = {
+    1: '2',
+    2: '3'
+  }
+
+  const commonvostr = {
+    "menuVo":{
+      "menuCd":"0041",
+      "uriPath":"data/offi/",
+      "chartYn":"N"
+    },
+    "searchVo":{
+      "searchDate": searchDate,
+      "selectMeetYear": searchYear
+    },
+    "menuCodeVo":{
+      "menuCd":"0041",
+      "leagueId": league[leagueNum],
+      "workCode":"S"
+    }
+  }
+  
+  const param = {commonvostr: JSON.stringify(commonvostr)}
+
+  return axios.post(url, querystring.stringify(param))
+  .then(res => new JSDOM(res.data))
+  .then(doc => doc.window.document)
+  .then(doc => eval(doc.querySelectorAll('script')[5].textContent.match(/var jsonResultData = (.*)/i)[1])[0])
+}
+
 exports.matchToString = (club) => {
   const score = club.score == undefined ? '' : ' ('+club.score+')'
   return [
@@ -235,8 +276,20 @@ exports.lineUpToString = (lineUp) => {
   ].join('\n\n')
 }
 
+exports.rankingToString = (leagueNum, ranking) => {
+  const ranks = ranking.map(rank => teamRankToString(rank))
+  const group1 = leagueNum == 1 ? ranks.slice(0,3) : ranks.slice(0,1)
+  const group2 = leagueNum == 1 ? ranks.slice(3,10) : ranks.slice(1,3)
+  const group3 = leagueNum == 1 ? ranks.slice(10,12) : ranks.slice(3,10)
+  return [group1.join('\n'), group2.join('\n'), group3.join('\n')].join('\n\n')
+}
+
 function playerToString(player) {
   return player.position + '. ' + player.number.toString().padStart(2, '0') + '. ' + player.name
+}
+
+function teamRankToString(rank) {
+  return rank['Rank'].toString().padStart(2, '0') + '. ' + rank['Team_Name'] + ' (경기수: ' + rank['Game_Count']+', 승점: ' + rank['Gain_Point'] + ')'
 }
 
 function getSession() {
