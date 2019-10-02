@@ -1,3 +1,4 @@
+'use strict'
 const axios = require('axios')
 const {JSDOM} = require('jsdom')
 const moment = require("moment-timezone")
@@ -136,43 +137,39 @@ function _getLastMatch(clubName, matchDate, count = 1) {
   })
 }
 
-exports.getLineUp = (clubName, matchYear, gameId) => {
-  return cache.get('lineup-' + clubName, matchYear + '-' + gameId, () => _getLineUp(clubName, matchYear, gameId)) 
+exports.getLineUp = (leagueNum, teamId, matchYear, gameId) => {
+  return cache.get('lineup-' + teamId, matchYear + '-' + gameId, () => _getLineUp(leagueNum, teamId, matchYear, gameId)) 
 }
 
-function _getLineUp(clubName, matchYear, gameId) {
-  const url = 'http://portal.kleague.com/mainFrame.do'
+function _getLineUp(leagueNum, teamId, matchYear, gameId) {
+  const url = 'http://portal.kleague.com/data/matc/liveEventJson.do'
   const param = {
-    selectedMenuCd: '0301',
-    mainMeetYear: matchYear,
-    mainGameId: gameId
+    homeTeam: 'K', //뭐라도 보내야 동작함
+    awayTeam: 'K', //뭐라도 보내야 동작함
+    meetYear: matchYear,
+    meetSeq: leagueNum,
+    gameId: gameId,
   }
 
   if (gameId == null || gameId == undefined) {
     return Promise.reject('no_game_id')
   } else {
-    return getSession()
-    .then(session => axios.post(url, querystring.stringify(param), {headers: {'Cookie': session}}))
-    .then(res => new JSDOM(res.data))
-    .then(doc => doc.window.document)
-    .then(doc => {
-      const home = doc.querySelector('#btnHomeTeam')
-      const away = doc.querySelector('#btnAwayTeam')
-      let playerDocs;
-
-      if (home == null || away == null) {
+    return axios.post(url, querystring.stringify(param))
+    .then(res => res.data)
+    .then(obj => {
+      if(obj['homeEntryList'] == undefined || obj['homeEntryList'].length <= 0){
         return Promise.reject('no_lineup')
-      } else if (home.textContent == clubName) {
-        playerDocs = domToArray(doc.querySelectorAll('#ulHomeList li'))
-      } else if (away.textContent == clubName) {
-        playerDocs = domToArray(doc.querySelectorAll('#ulAwayList li'))
       }
 
-      return playerDocs.map(e => {
+      const teamEntryList = obj['homeEntryList'][0]['teamId'] == teamId ? obj['homeEntryList'] : obj['awayEntryList']
+      return teamEntryList.map(player => {
         return {
-          number: parseInt(e.querySelector('span.match-live-txt').textContent),
-          position: e.querySelector('span.match-live-txt03').textContent,
-          name: e.querySelector('span.match-live-txt02').textContent,
+          number: player['backNo'],
+          position: player['positionNm'],
+          name: player['name'],
+          playerId: player['playerId'],
+          captain: player['captainYn'] == 'N' ? true : false,
+          profileImage: 'http://portal.kleague.com/common/playerPhotoById.do?playerId='+player['playerId']+'&recYn=Y&searchYear='+matchYear
         }
       })
     })
@@ -256,6 +253,41 @@ function _getRanking(leagueNum, rankingDate) {
   .then(doc => eval(doc.querySelectorAll('script')[5].textContent.match(/var jsonResultData = (.*)/i)[1])[0])
 }
 
+exports.highlight = (leagueNum, gameId) => {
+  return cache.get('league-'+leagueNum+'-highlights', gameId, () => _highlight(leagueNum, gameId)) 
+}
+
+function _highlight(leagueNum, gameId) {
+  return toDaumGameId(leagueNum, gameId)
+  .then(daumGameId => {
+    const param = {
+      'service': 'sports', 
+      'type': 'game',
+      'contentsType': 'video',
+      'pageSize': '100',
+      'keyName': 'orgId',
+      'orgId': daumGameId,
+      'callback': 'callback'
+    }
+    const url = 'https://media.daum.net/proxy/api/mc2/clusters/more.json?'+querystring.stringify(param)
+    return axios.get(url)
+    .then(res => eval('function callback(p) { return p }\n' + res.data))
+    .then(res => {
+      if (res.data.length < 1) {
+        return Promise.reject('no_highlight')
+      } else {
+        return res.data.map(e => {
+          return {
+            'title': e.title,
+            'video': e['etcInfo']['videoUrl'],
+            'image': e['image'][0]
+          }
+        })
+      }
+    })
+  })
+}
+
 exports.matchToString = (club) => {
   const score = club.score == undefined ? '' : ' ('+club.score+')'
   return [
@@ -269,10 +301,10 @@ exports.matchToString = (club) => {
 
 exports.lineUpToString = (lineUp) => {
   return [
-    lineUp.filter(p => p.position == 'GK').map(p => playerToString(p)).join('\n'),
-    lineUp.filter(p => p.position == 'DF').map(p => playerToString(p)).join('\n'),
-    lineUp.filter(p => p.position == 'MF').map(p => playerToString(p)).join('\n'),
-    lineUp.filter(p => p.position == 'FW').map(p => playerToString(p)).join('\n')
+    lineUp.filter(p => p.position == 'GK').map(p => _playerToString(p)).join('\n'),
+    lineUp.filter(p => p.position == 'DF').map(p => _playerToString(p)).join('\n'),
+    lineUp.filter(p => p.position == 'MF').map(p => _playerToString(p)).join('\n'),
+    lineUp.filter(p => p.position == 'FW').map(p => _playerToString(p)).join('\n')
   ].join('\n\n')
 }
 
@@ -284,7 +316,9 @@ exports.rankingToString = (leagueNum, ranking) => {
   return [group1.join('\n'), group2.join('\n'), group3.join('\n')].join('\n\n')
 }
 
-function playerToString(player) {
+exports.playerToString = _playerToString
+
+function _playerToString(player) {
   return player.position + '. ' + player.number.toString().padStart(2, '0') + '. ' + player.name
 }
 
@@ -308,6 +342,41 @@ function _getSession() {
       return Promise.resolve(res.response.headers['set-cookie'].join(';').replace(/JSESSIONID=([A-Z0-9]+)(;.*)/, 'JSESSIONID=$1'))
     }
   })
+}
+
+function toDaumGameId(leagueNum, gameId) {
+  return cache.get('daumgameid', gameId, () => _toDaumGameId(leagueNum, gameId), () =>{
+    let at = new Date()
+    at.setHours(at.getHours() + 24*30)
+    return Promise.resolve(at)
+  })
+}
+
+function _toDaumGameId(leagueNum, gameId) {
+  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+  const matchYear = koreanMatchDate.format("YYYY")
+  const daumCpGameId = toDaumCpGameId(matchYear, leagueNum, gameId)
+  const param = {
+    callback: 'callback',
+    leagueCode: 'KL,KL_RELEGATION', //TODO: AFCCL 처리
+    pageSize: 350,
+    fromDate: matchYear+'0301',
+    toDate: matchYear+'1231'
+  }
+  const url = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(param)
+  return axios.get(url)
+  .then(res => eval('function callback(p) { return p }\n' + res.data))
+  .then(res => res.list)
+  .then(res => res.filter(g => g['cpGameId'] == daumCpGameId))
+  .then(res => res.length > 0 ? res[0]['gameId'] : undefined)
+}
+
+function toDaumTeamId(teamId) {
+  return parseInt(teamId.replace(/K([0-9]+)/, '$1')).toString()
+}
+
+function toDaumCpGameId(matchYear, leagueNum, gameId) {
+  return matchYear+leagueNum+gameId
 }
 
 function domToArray(dom) {

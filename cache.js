@@ -18,13 +18,17 @@ exports.get = (cacheType, cacheKey, funValue, funExpireAt) => {
     if(err == 'not_found' || err == 'expired') {
       const funExpire = funExpireAt || defaultExpireAt
       return funValue()
-      .then(value =>{
-        return funExpire()
-        .then(expireAt => {
-          const valueStr = JSON.stringify(value)
-          setCacheDataToDDB(cacheType, cacheKey, valueStr, expireAt)
+      .then(value => {
+        if(value == undefined || value == null){
           return value
-        })
+        } else {
+          return funExpire()
+          .then(expireAt => {
+            const valueStr = JSON.stringify(value)
+            setCacheDataToDDB(cacheType, cacheKey, valueStr, expireAt)
+            return value
+          })
+        }
       })
     } else {
       return Promise.reject(err)
