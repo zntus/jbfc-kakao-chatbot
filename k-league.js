@@ -276,10 +276,11 @@ function _highlight(leagueNum, gameId) {
       if (res.data.length < 1) {
         return Promise.reject('no_highlight')
       } else {
+        console.log(res.data)
         return res.data.map(e => {
           return {
             'title': e.title,
-            'video': e['etcInfo']['videoUrl'],
+            'video': 'http://tv.kakao.com/v/'+e['_id']['key'],
             'image': e['image'][0]
           }
         })
