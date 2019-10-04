@@ -138,43 +138,42 @@ function _getLastMatch(clubName, matchDate, count = 1) {
 }
 
 exports.getLineUp = (leagueNum, teamId, matchYear, gameId) => {
-  return cache.get('lineup-' + teamId, matchYear + '-' + gameId, () => _getLineUp(leagueNum, teamId, matchYear, gameId)) 
+  return cache.get('lineup-' + teamId, matchYear + '-' + gameId, () => _getLineUp(leagueNum, teamId, matchYear, gameId))
 }
 
 function _getLineUp(leagueNum, teamId, matchYear, gameId) {
-  const url = 'http://portal.kleague.com/data/matc/liveEventJson.do'
-  const param = {
-    homeTeam: 'K', //뭐라도 보내야 동작함
-    awayTeam: 'K', //뭐라도 보내야 동작함
-    meetYear: matchYear,
-    meetSeq: leagueNum,
-    gameId: gameId,
-  }
-
-  if (gameId == null || gameId == undefined) {
-    return Promise.reject('no_game_id')
-  } else {
-    return axios.post(url, querystring.stringify(param))
-    .then(res => res.data)
-    .then(obj => {
-      if(obj['homeEntryList'] == undefined || obj['homeEntryList'].length <= 0){
+  const sortingNum = {'GK': 0, 'DF': 1, 'MF': 2, 'FW': 3, '대기': 4}
+  return toDaumGameId(leagueNum, gameId)
+  .then(daumGameId => {
+    const param = {
+      'gameId': daumGameId, 
+      'detail': 'liveData',
+      'callback': 'callback'
+    }
+    const url = 'https://media.daum.net/proxy/hermes/api/game/get.json?'+querystring.stringify(param)
+    return axios.get(url)
+    .then(res => eval('function callback(p) { return p }\n' + res.data))
+    .then(res => {
+      if (res.homePerson == null || res.awayPerson == null) {
         return Promise.reject('no_lineup')
+      } else {
+        let teamEntryList = res.home.team.cpTeamId == teamId ? res.homePerson : res.awayPerson
+        return teamEntryList.map(player => {
+          return {
+            number: player['backNumber'],
+            position: player['positionName'] ? player['positionName'] : '대기', // daum은 선수가 대기일때 position 이 null이 온다
+            name: player['name'],
+            playerId: player['cpPersonId'],
+            captain: false, // daum은 주장 정보를 제공하지 않음
+            link: 'https://m.sports.media.daum.net/m/sports/player/kl/'+player['personId']+'/record',
+            profileImage: 'http://portal.kleague.com/common/playerPhotoById.do?playerId='+player['cpPersonId']+'&recYn=Y&searchYear='+matchYear
+          }
+        }).sort((player1, player2) => sortingNum[player1['position']] - sortingNum[player2['position']])
       }
-
-      const teamEntryList = obj['homeEntryList'][0]['teamId'] == teamId ? obj['homeEntryList'] : obj['awayEntryList']
-      return teamEntryList.map(player => {
-        return {
-          number: player['backNo'],
-          position: player['positionNm'],
-          name: player['name'],
-          playerId: player['playerId'],
-          captain: player['captainYn'] == 'N' ? true : false,
-          profileImage: 'http://portal.kleague.com/common/playerPhotoById.do?playerId='+player['playerId']+'&recYn=Y&searchYear='+matchYear
-        }
-      })
     })
-  }
+  })
 }
+
 
 exports.getReferees = (matchYear, gameId) => {
   return cache.get('referees', matchYear + '-' + gameId, () => _getReferees(matchYear, gameId)) 
@@ -276,7 +275,6 @@ function _highlight(leagueNum, gameId) {
       if (res.data.length < 1) {
         return Promise.reject('no_highlight')
       } else {
-        console.log(res.data)
         return res.data.map(e => {
           return {
             'title': e.title,

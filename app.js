@@ -154,8 +154,9 @@ router.all('/lineup', (req, res) => {
   let response = kakaoResponse.response()
   
   kleague.getLineUp(JBFC_LEAGUE_NUM, JBFC_TEAM_ID, matchYear, gameId)
-  .then(lineup => response.appendOutput(
-    kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
+  .then(lineup => 
+    response
+    .appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
     .appendOutput(
       kakaoResponse.carousel(kakaoResponse.basicCard().getType())
       .appendItems(
@@ -163,6 +164,7 @@ router.all('/lineup', (req, res) => {
           kakaoResponse.basicCard()
           .setImage(player['profileImage'], true, 80, 101)
           .setTitle(kleague.playerToString(player))
+          .appendButton(kakaoResponse.button('자세히 보기').setAction('webLink').setWebLinkUrl(player['link']))
         )
       )
     )
@@ -193,7 +195,8 @@ router.all('/matches/:game_id/lineup', (req, res) => {
 
   kleague.getLineUp(JBFC_LEAGUE_NUM, JBFC_TEAM_ID, matchYear, gameId)
   .then(lineup => 
-    response.appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
+    response
+    .appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
     .appendOutput(
       kakaoResponse.carousel(kakaoResponse.basicCard().getType())
       .appendItems(
@@ -201,6 +204,7 @@ router.all('/matches/:game_id/lineup', (req, res) => {
           kakaoResponse.basicCard()
           .setImage(player['profileImage'], true, 80, 101)
           .setTitle(kleague.playerToString(player))
+          .appendButton(kakaoResponse.button('자세히 보기').setAction('webLink').setWebLinkUrl(player['link']))
         )
       )
     )
