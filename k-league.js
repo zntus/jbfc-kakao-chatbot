@@ -259,6 +259,7 @@ exports.highlight = (leagueNum, gameId) => {
 function _highlight(leagueNum, gameId) {
   return toDaumGameId(leagueNum, gameId)
   .then(daumGameId => {
+    console.log('daumGameId: ', daumGameId)
     const param = {
       'service': 'sports', 
       'type': 'game',
@@ -351,14 +352,16 @@ function toDaumGameId(leagueNum, gameId) {
   })
 }
 
-function _toDaumGameId(leagueNum, gameId) {
+function _toDaumGameId(leagueNum, gameId, userPage) {
+  const nowPage = userPage || 1
   const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
   const matchYear = koreanMatchDate.format("YYYY")
   const daumCpGameId = toDaumCpGameId(matchYear, leagueNum, gameId)
   const param = {
     callback: 'callback',
     leagueCode: 'KL,KL_RELEGATION', //TODO: AFCCL 처리
-    pageSize: 350,
+    pageSize: 200,
+    page: nowPage,
     fromDate: matchYear+'0301',
     toDate: matchYear+'1231'
   }
@@ -366,8 +369,12 @@ function _toDaumGameId(leagueNum, gameId) {
   return axios.get(url)
   .then(res => eval('function callback(p) { return p }\n' + res.data))
   .then(res => res.list)
-  .then(res => res.filter(g => g['cpGameId'] == daumCpGameId))
-  .then(res => res.length > 0 ? res[0]['gameId'] : undefined)
+  .then(res => {
+    if(res.length == 0) return undefined
+    const cpGameId = res.filter(g => g['cpGameId'] == daumCpGameId)
+    if(cpGameId.length > 0) return cpGameId[0]['gameId']
+    else return _toDaumGameId(leagueNum, gameId, nowPage+1)
+  })
 }
 
 function toDaumTeamId(teamId) {
