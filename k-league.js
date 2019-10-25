@@ -290,13 +290,14 @@ function _highlight(leagueNum, gameId) {
 
 exports.matchToString = (club) => {
   const score = club.score == undefined ? '' : ' ('+club.score+')'
+  const broadcasting = club.broadcasting == undefined ? undefined : 'TV중계: ' + club.broadcasting
   return [
     club.league, 
     club.home + ' vs ' + club.away + score,
-    'TV중계: ' + club.broadcasting,
+    broadcasting,
     club.stadium,
     club.date + ' ' + club.time
-  ].join('\n')
+  ].filter(e => e!=undefined).join('\n')
 }
 
 exports.lineUpToString = (lineUp) => {
@@ -324,6 +325,47 @@ function _playerToString(player) {
 
 function teamRankToString(rank) {
   return rank['Rank'].toString().padStart(2, '0') + '. ' + rank['Team_Name'] + ' (경기수: ' + rank['Game_Count']+', 승점: ' + rank['Gain_Point'] + ')'
+}
+
+exports.nextGames  = (teamId, gameCount) => {
+  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+  const fromMatchDate = koreanMatchDate.format("YYYYMMDD")
+  return cache.get('team-'+teamId+'-next-matches', fromMatchDate, () => _nextGames(teamId, gameCount)) 
+}
+
+function _nextGames(teamId, gameCount) {
+  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+  const matchYear = koreanMatchDate.format("YYYY")
+  const fromMatchDate = koreanMatchDate.format("YYYYMMDD")
+  const daumTeamId = toDaumTeamId(teamId)
+  const param = {
+    callback: 'callback',
+    leagueCode: 'KL,KL_RELEGATION', //TODO: AFCCL 처리
+    teamId: daumTeamId,
+    pageSize: gameCount,
+    fromDate: fromMatchDate,
+    toDate: matchYear+'1231'
+  }
+  const url = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(param)
+  return axios.get(url)
+  .then(res => eval('function callback(p) { return p }\n' + res.data))
+  .then(res => res.list)
+  .then(res => {
+    if(res.length == 0) 
+      return Promise.reject('no_match')
+
+    return res.map(game => {
+      return {
+        league: game['league']['name'],
+        gameid: gameIdToDaumCpGameId(game['cpGameId']),
+        home: game['away']['team']['shortName'],
+        away: game['home']['team']['shortName'],
+        date: game['startDate'].replace(/([0-9]{4})([0-9]{2})([0-9]{2})/,'$1/$2/$3'), 
+        time: game['startTime'].replace(/([0-9]{2})([0-9]{2})/,'$1:$2'),
+        stadium: game['field']['shortName']
+      }
+    })
+  })
 }
 
 function getSession() {
@@ -383,6 +425,10 @@ function toDaumTeamId(teamId) {
 
 function toDaumCpGameId(matchYear, leagueNum, gameId) {
   return matchYear+leagueNum+gameId
+}
+
+function gameIdToDaumCpGameId(gameId) {
+  return gameId.replace(/[0-9]{4}[0-9]{1}([0-9]*)/, '$1')
 }
 
 function domToArray(dom) {

@@ -103,6 +103,31 @@ router.all('/matches/next', (_req, res) => {
   })
 })
 
+router.all('/matches/next_all', (_req, res) => {
+  let response = kakaoResponse.response()
+
+  kleague.nextGames(JBFC_TEAM_ID, 5)
+  .then(matches => {
+    response.appendOutput(
+      kakaoResponse.carousel(kakaoResponse.basicCard().getType())
+      .appendItems(matches.map(m => kakaoResponse.basicCard().setDescription(kleague.matchToString(m))))
+    )
+  })
+  .catch(reason => {
+    switch(reason){
+      case 'no_match':
+        response.appendOutput(kakaoResponse.simpleText('경기 일정이 없습니다'))
+        break
+      default :
+        console.log('Error: ', reason)
+        response.appendOutput(kakaoResponse.simpleText('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'))
+    }
+  })
+  .finally(() => {
+    res.status(200).send(response)
+  })
+})
+
 router.all('/matches/last', (_req, res) => {
   let response = kakaoResponse.response()
 
