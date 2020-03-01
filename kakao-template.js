@@ -70,6 +70,13 @@ exports.button = (label) => {
     setWebLinkUrl: function(value) {
       this['webLinkUrl'] = value
       return this
+    },
+
+    setExtra: function(key, value) {
+      if(this['extra'] == undefined)
+        this['extra'] = {}
+      this['extra'][key] = value
+      return this
     }
   }
 

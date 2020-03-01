@@ -7,7 +7,6 @@ const path = require('path')
 const express = require('express')
 const bodyParser = require('body-parser')
 const cors = require('cors')
-const compression = require('compression')
 const moment = require("moment-timezone")
 const awsServerlessExpressMiddleware = require('aws-serverless-express/middleware')
 const app = express()
@@ -35,31 +34,7 @@ router.all('/matches/today', (_req, res) => {
   let response = kakaoResponse.response()
 
   kleague.getMatch(JBFC_TEAM_NAME, new Date())
-  .then(match => {
-    response.appendOutput(
-      kakaoResponse.basicCard()
-      .setDescription(kleague.matchToString(match))
-      .appendButton(
-        kakaoResponse.button("라인업")
-        .setAction('block')
-        .setBlockId('5d7d48eeffa7480001c23697')
-      )
-      .appendButton(
-        kakaoResponse.button("심판")
-        .setAction('block')
-        .setBlockId('5d86b373ffa74800015154be')
-      )
-      .appendButton(
-        kakaoResponse.button("하이라이트")
-        .setAction('block')
-        .setBlockId('5d94abbb92690d0001a42fe1')
-      )
-    ).appendContext(
-      kakaoResponse.context('game')
-      .setLifeSpan(5)
-      .addParam('game_id', match.gameid.toString())
-    )
-  })
+  .then(match => response.appendOutput(createMatchBasicCard(match)))
   .catch(reason => {
     switch(reason){
       case 'no_match':
@@ -82,10 +57,6 @@ router.all('/matches/next', (_req, res) => {
   .then(match => {
     response.appendOutput(
       kakaoResponse.simpleText(kleague.matchToString(match))
-    ).appendContext(
-      kakaoResponse.context('game')
-      .setLifeSpan(5)
-      .addParam('game_id', match.gameid.toString())
     )
   })
   .catch(reason => {
@@ -130,33 +101,11 @@ router.all('/matches/next_all', (_req, res) => {
 
 router.all('/matches/last', (_req, res) => {
   let response = kakaoResponse.response()
+  const koreanMatchDate = moment(new Date()).tz("Asia/Seoul")
+  const matchDate = koreanMatchDate.format("YYYY/MM/DD")
 
-  kleague.getLastMatch(JBFC_TEAM_NAME, new Date())
-  .then(match => {
-    response.appendOutput(
-      kakaoResponse.basicCard()
-      .setDescription(kleague.matchToString(match))
-      .appendButton(
-        kakaoResponse.button("라인업")
-        .setAction('block')
-        .setBlockId('5d7d48eeffa7480001c23697')
-      )
-      .appendButton(
-        kakaoResponse.button("심판")
-        .setAction('block')
-        .setBlockId('5d86b373ffa74800015154be')
-      )
-      .appendButton(
-        kakaoResponse.button("하이라이트")
-        .setAction('block')
-        .setBlockId('5d94abbb92690d0001a42fe1')
-      )
-    ).appendContext(
-      kakaoResponse.context('game')
-      .setLifeSpan(5)
-      .addParam('game_id', match.gameid.toString())
-    )
-  })
+  kleague.getLastMatch(JBFC_TEAM_NAME, matchDate)
+  .then(match => response.appendOutput(createMatchBasicCard(match)))
   .catch(reason => {
     switch(reason){
       case 'no_match':
@@ -173,67 +122,30 @@ router.all('/matches/last', (_req, res) => {
 })
 
 router.all('/lineup', (req, res) => {
-  const gameId = req.body.action.params.game_id
-  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
-  const matchYear = koreanMatchDate.format("YYYY")
+  const matchDate = req.body.action.clientExtra.match_date
+  const leagueNum = req.body.action.clientExtra.league_num
   let response = kakaoResponse.response()
   
-  kleague.getLineUp(JBFC_LEAGUE_NUM, JBFC_TEAM_ID, matchYear, gameId)
-  .then(lineup => 
-    response
-    .appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
-    .appendOutput(
-      kakaoResponse.carousel(kakaoResponse.basicCard().getType())
-      .appendItems(
-        lineup.map(player => 
-          kakaoResponse.basicCard()
-          .setImage(player['profileImage'], true, 80, 101)
-          .setTitle(kleague.playerToString(player))
-          .appendButton(kakaoResponse.button('자세히 보기').setAction('webLink').setWebLinkUrl(player['link']))
+  kleague.getLineUp(leagueNum, JBFC_TEAM_ID, matchDate)
+  .then(lineup => {
+    if(leagueNum == 1 || leagueNum == 2 ){
+      return response
+      .appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
+      .appendOutput(
+        kakaoResponse.carousel(kakaoResponse.basicCard().getType())
+        .appendItems(
+          lineup.map(player => 
+            kakaoResponse.basicCard()
+            .setImage(player['profileImage'], true, 80, 101)
+            .setTitle(kleague.playerToString(player))
+            .appendButton(kakaoResponse.button('자세히 보기').setAction('webLink').setWebLinkUrl(player['link']))
+          )
         )
       )
-    )
-  )
-  .catch(reason => {
-    switch(reason){
-      case 'no_game_id':
-        response.appendOutput(kakaoResponse.simpleText('어떤 경기에 대해 물어 보셨는지 모르겠어요.'))
-        break
-      case 'no_lineup':
-        response.appendOutput(kakaoResponse.simpleText('라인업이 공개되지 않았습니다.'))
-        break
-      default :
-        console.log('Error: ', reason)
-        response.appendOutput(kakaoResponse.simpleText('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'))
+    } else {
+      return response.appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
     }
   })
-  .finally(() => {
-    res.status(200).send(response)
-  })
-})
-
-router.all('/matches/:game_id/lineup', (req, res) => {
-  const gameId = req.params['game_id']
-  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
-  const matchYear = koreanMatchDate.format("YYYY")
-  let response = kakaoResponse.response()
-
-  kleague.getLineUp(JBFC_LEAGUE_NUM, JBFC_TEAM_ID, matchYear, gameId)
-  .then(lineup => 
-    response
-    .appendOutput(kakaoResponse.simpleText(kleague.lineUpToString(lineup)))
-    .appendOutput(
-      kakaoResponse.carousel(kakaoResponse.basicCard().getType())
-      .appendItems(
-        lineup.map(player => 
-          kakaoResponse.basicCard()
-          .setImage(player['profileImage'], true, 80, 101)
-          .setTitle(kleague.playerToString(player))
-          .appendButton(kakaoResponse.button('자세히 보기').setAction('webLink').setWebLinkUrl(player['link']))
-        )
-      )
-    )
-  )
   .catch(reason => {
     switch(reason){
       case 'no_game_id':
@@ -253,7 +165,7 @@ router.all('/matches/:game_id/lineup', (req, res) => {
 })
 
 router.all('/referees', (req, res) => {
-  const gameId = req.body.action.params.game_id
+  const gameId = req.body.action.clientExtra.game_id
   const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
   const matchYear = koreanMatchDate.format("YYYY")
   let response = kakaoResponse.response()
@@ -322,51 +234,12 @@ router.all('/ranking/:league', (req, res) => {
   })
 })
 
-router.all('/matches/:game_id/highlight', (req, res) => {
-  const gameId = req.params['game_id']
-  let response = kakaoResponse.response()
-
-  kleague.highlight(JBFC_LEAGUE_NUM, gameId)
-  .then(res => 
-    response.appendOutput(
-      kakaoResponse.carousel(kakaoResponse.basicCard().getType())
-      .appendItems(
-        res.map(video => 
-          kakaoResponse.basicCard()
-          .setImage(video.image)
-          .setTitle(video.title)
-          .appendButton(
-            kakaoResponse.button('영상 보기')
-            .setAction('webLink')
-            .setWebLinkUrl(video.video)
-          )
-        )
-      )
-    )
-  )
-  .catch(reason => {
-    switch(reason){
-      case 'no_game_id':
-        response.appendOutput(kakaoResponse.simpleText('어떤 경기에 대해 물어 보셨는지 모르겠어요.'))
-        break
-      case 'no_highlight':
-        response.appendOutput(kakaoResponse.simpleText('하이라이트가 아직 공개되지 않았습니다.'))
-        break
-      default :
-        console.log('Error: ', reason)
-        response.appendOutput(kakaoResponse.simpleText('현재 챗봇이 정상 작동하지 않습니다. 잠시후 다시 시도해 주세요.'))
-    }
-  })
-  .finally(() => {
-    res.status(200).send(response)
-  })
-})
-
 router.all('/highlight', (req, res) => {
-  const gameId = req.body.action.params.game_id
+  const matchDate = req.body.action.clientExtra.match_date
+  const leagueNum = req.body.action.clientExtra.league_num
   let response = kakaoResponse.response()
-  
-  kleague.highlight(JBFC_LEAGUE_NUM, gameId)
+
+  kleague.highlight(leagueNum, JBFC_TEAM_ID, matchDate)
   .then(res => 
     response.appendOutput(
       kakaoResponse.carousel(kakaoResponse.basicCard().getType())
@@ -401,6 +274,52 @@ router.all('/highlight', (req, res) => {
     res.status(200).send(response)
   })
 })
+
+function createMatchBasicCard(match) {
+  if(match.league_num == 1 || match.league_num == 2) {
+    return kakaoResponse.basicCard()
+    .setDescription(kleague.matchToString(match))
+    .appendButton(
+      kakaoResponse.button("라인업")
+      .setAction('block')
+      .setBlockId('5d7d48eeffa7480001c23697')
+      .setExtra('match_date', match.date)
+      .setExtra('league_num', match.league_num)
+    )
+    .appendButton(
+      kakaoResponse.button("심판")
+      .setAction('block')
+      .setBlockId('5d86b373ffa74800015154be')
+      .setExtra('game_id', match.gameid.toString())
+      .setExtra('match_date', match.date)
+      .setExtra('league_num', match.league_num)
+    )
+    .appendButton(
+      kakaoResponse.button("하이라이트")
+      .setAction('block')
+      .setBlockId('5d94abbb92690d0001a42fe1')
+      .setExtra('match_date', match.date)
+      .setExtra('league_num', match.league_num)
+    )
+  } else {
+    return kakaoResponse.basicCard()
+    .setDescription(kleague.matchToString(match))
+    .appendButton(
+      kakaoResponse.button("라인업")
+      .setAction('block')
+      .setBlockId('5d7d48eeffa7480001c23697')
+      .setExtra('match_date', match.date)
+      .setExtra('league_num', match.league_num)
+    )
+    .appendButton(
+      kakaoResponse.button("하이라이트")
+      .setAction('block')
+      .setBlockId('5d94abbb92690d0001a42fe1')
+      .setExtra('match_date', match.date)
+      .setExtra('league_num', match.league_num)
+    )
+  }
+}
 
 // The aws-serverless-express library creates a server and listens on a Unix
 // Domain Socket for you, so you can remove the usual call to app.listen.

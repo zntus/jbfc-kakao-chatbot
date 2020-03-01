@@ -74,7 +74,7 @@ function _getNextMatch(clubName, matchDate, count = 1) {
         e.querySelector('span.taL.pl5') != null && 
         !e.querySelector('span.taL.pl5').getAttribute('class').split(' ').includes('gray') && 
         parseInt(e.querySelector('span.taL.pl5').textContent) > parseInt(day)
-      ).map(e => domToArray(e.querySelectorAll('div.full-calendar-data-k1, div.full-calendar-data-k2, div.full-calendar-data-k5')))
+      ).map(e => domToArray(e.querySelectorAll('div.full-calendar-data-k1, div.full-calendar-data-k2, div.full-calendar-data-k5, div.full-calendar-data-k5-list')))
     )
     .filter(e => 
       e.querySelectorAll('span.flL.pl5').length > 0 &&
@@ -93,13 +93,13 @@ function _getNextMatch(clubName, matchDate, count = 1) {
 }
 
 exports.getLastMatch = (clubName, matchDate) => {
-  const koreanMatchDate = moment(matchDate.getTime()).tz("Asia/Seoul")
+  const koreanMatchDate = moment(new Date(matchDate)).tz("Asia/Seoul")
   const date = koreanMatchDate.format("YYYYMMDD")
-  return cache.get('last-match-'+clubName, date, () => _getLastMatch(clubName, matchDate)) 
+  return cache.get('last-match-'+clubName, date, () => _getLastMatch(clubName, matchDate))
 }
 
 function _getLastMatch(clubName, matchDate, count = 1) {
-  const koreanMatchDate = moment(matchDate.getTime()).tz("Asia/Seoul")
+  const koreanMatchDate = moment(new Date(matchDate))
   const year = koreanMatchDate.format("YYYY")
   const month = koreanMatchDate.format("MM")
   const day = koreanMatchDate.format("DD")
@@ -108,6 +108,7 @@ function _getLastMatch(clubName, matchDate, count = 1) {
     selectYear: year,
     selectMonth: month
   }
+
 
   return axios.post(url, querystring.stringify(param))
   .then(res => new JSDOM(res.data))
@@ -130,20 +131,24 @@ function _getLastMatch(clubName, matchDate, count = 1) {
       if(count <= 0)
         return Promise.reject('no_match')
       else
-        return _getLastMatch(clubName, previousMonthLastDate(matchDate), count-1)
+        var previousKoreanMatchDate =  moment(previousMonthLastDate(new Date(matchDate)))
+        var previousDate =  previousKoreanMatchDate.format("YYYY/MM/DD");
+        return _getLastMatch(clubName, previousDate, count-1)
     } else {
       return parseClub(clubDocs[clubDocs.length-1])
     }
   })
 }
 
-exports.getLineUp = (leagueNum, teamId, matchYear, gameId) => {
-  return cache.get('lineup-' + teamId, matchYear + '-' + gameId, () => _getLineUp(leagueNum, teamId, matchYear, gameId))
+exports.getLineUp = (leagueNum, teamId, matchDate) => {
+  return cache.get('lineup-' + teamId, matchDate, () => _getLineUp(leagueNum, teamId, matchDate))
 }
 
-function _getLineUp(leagueNum, teamId, matchYear, gameId) {
+function _getLineUp(leagueNum, teamId, matchDate) {
+  const koreanMatchDate = moment(new Date(matchDate))
+  const matchYear = koreanMatchDate.format("YYYY")
   const sortingNum = {'GK': 0, 'DF': 1, 'MF': 2, 'FW': 3, '대기': 4}
-  return toDaumGameId(leagueNum, gameId)
+  return toDaumGameId(leagueNum, teamId, matchDate)
   .then(daumGameId => {
     const param = {
       'gameId': daumGameId, 
@@ -157,7 +162,7 @@ function _getLineUp(leagueNum, teamId, matchYear, gameId) {
       if (res.homePerson == null || res.awayPerson == null) {
         return Promise.reject('no_lineup')
       } else {
-        let teamEntryList = res.home.team.cpTeamId == teamId ? res.homePerson : res.awayPerson
+        let teamEntryList = res.home.team.teamId == teamIdToDaumTeamId(leagueNum, teamId) ? res.homePerson : res.awayPerson
         return teamEntryList.map(player => {
           return {
             number: player['backNumber'],
@@ -252,14 +257,13 @@ function _getRanking(leagueNum, rankingDate) {
   .then(doc => eval(doc.querySelectorAll('script')[5].textContent.match(/var jsonResultData = (.*)/i)[1])[0])
 }
 
-exports.highlight = (leagueNum, gameId) => {
-  return cache.get('league-'+leagueNum+'-highlights', gameId, () => _highlight(leagueNum, gameId)) 
+exports.highlight = (leagueNum, teamId, matchDate) => {
+  return cache.get('league-'+leagueNum+'-highlights', teamId+'-'+matchDate, () => _highlight(leagueNum, teamId, matchDate)) 
 }
 
-function _highlight(leagueNum, gameId) {
-  return toDaumGameId(leagueNum, gameId)
+function _highlight(leagueNum, teamId, matchDate) {
+  return toDaumGameId(leagueNum, teamId, matchDate)
   .then(daumGameId => {
-    console.log('daumGameId: ', daumGameId)
     const param = {
       'service': 'sports', 
       'type': 'game',
@@ -273,7 +277,7 @@ function _highlight(leagueNum, gameId) {
     return axios.get(url)
     .then(res => eval('function callback(p) { return p }\n' + res.data))
     .then(res => {
-      if (res.data.length < 1) {
+      if (res.data == undefined || res.data.length < 1) {
         return Promise.reject('no_highlight')
       } else {
         return res.data.map(e => {
@@ -327,45 +331,58 @@ function teamRankToString(rank) {
   return rank['Rank'].toString().padStart(2, '0') + '. ' + rank['Team_Name'] + ' (경기수: ' + rank['Game_Count']+', 승점: ' + rank['Gain_Point'] + ')'
 }
 
-exports.nextGames  = (teamId, gameCount) => {
-  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
-  const fromMatchDate = koreanMatchDate.format("YYYYMMDD")
-  return cache.get('team-'+teamId+'-next-matches', fromMatchDate, () => _nextGames(teamId, gameCount)) 
-}
+// exports.nextGames  = (teamId, gameCount) => {
+//   const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+//   const fromMatchDate = koreanMatchDate.format("YYYYMMDD")
+//   return cache.get('team-'+teamId+'-next-matches', fromMatchDate, () => _nextGames(teamId, gameCount)) 
+// }
 
-function _nextGames(teamId, gameCount) {
+exports.nextGames = function nextGames(teamId, gameCount) {
   const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
   const matchYear = koreanMatchDate.format("YYYY")
   const fromMatchDate = koreanMatchDate.format("YYYYMMDD")
-  const daumTeamId = toDaumTeamId(teamId)
-  const param = {
+
+  const paramKL = {
     callback: 'callback',
-    leagueCode: 'KL,KL_RELEGATION', //TODO: AFCCL 처리
-    teamId: daumTeamId,
+    leagueCode: 'KL,KL2',
+    teamId: teamIdToDaumTeamId(1, teamId),
     pageSize: gameCount,
     fromDate: fromMatchDate,
     toDate: matchYear+'1231'
   }
-  const url = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(param)
-  return axios.get(url)
-  .then(res => eval('function callback(p) { return p }\n' + res.data))
-  .then(res => res.list)
-  .then(res => {
-    if(res.length == 0) 
-      return Promise.reject('no_match')
+  const urlKL = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(paramKL)
 
-    return res.map(game => {
-      return {
-        league: game['league']['name'],
-        gameid: gameIdToDaumCpGameId(game['cpGameId']),
-        home: game['away']['team']['shortName'],
-        away: game['home']['team']['shortName'],
-        date: game['startDate'].replace(/([0-9]{4})([0-9]{2})([0-9]{2})/,'$1/$2/$3'), 
-        time: game['startTime'].replace(/([0-9]{2})([0-9]{2})/,'$1:$2'),
-        stadium: game['field']['shortName']
-      }
-    })
-  })
+  const paramAFCCL = {
+    callback: 'callback',
+    leagueCode: 'AFCCL',
+    teamId: teamIdToDaumTeamId(3, teamId),
+    pageSize: gameCount,
+    fromDate: fromMatchDate,
+    toDate: matchYear+'1231'
+  }
+  const urlAFCCL = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(paramAFCCL)
+
+  const resParser = (res) =>{
+    const games = eval('function callback(p) { return p }\n' + res.data)
+    return games.list
+  }
+
+  return Promise.all([axios.get(urlKL).then(resParser), axios.get(urlAFCCL).then(resParser)])
+  .then(games => games.reduce((a, b) => a.concat(b)))
+  .then(games => games.map(parseNextGames).sort((a, b) => a.date > b.date))
+  .then(games => games.slice(0, gameCount))
+}
+
+function parseNextGames(game) {
+  return {
+    league: game['league']['name'],
+    gameid: game['cpGameId'],
+    home: game['away']['team']['shortName'],
+    away: game['home']['team']['shortName'],
+    date: game['startDate'].replace(/([0-9]{4})([0-9]{2})([0-9]{2})/, '$1/$2/$3'),
+    time: game['startTime'].replace(/([0-9]{2})([0-9]{2})/, '$1:$2'),
+    stadium: game['field']['shortName']
+  }
 }
 
 function getSession() {
@@ -386,26 +403,51 @@ function _getSession() {
   })
 }
 
-function toDaumGameId(leagueNum, gameId) {
-  return cache.get('daumgameid', gameId, () => _toDaumGameId(leagueNum, gameId), () =>{
-    let at = new Date()
-    at.setHours(at.getHours() + 24*30)
-    return Promise.resolve(at)
-  })
-}
+// function toDaumGameId(leagueNum, gameId) {
+//   return cache.get('daumgameid', gameId, () => _toDaumGameId(leagueNum, gameId), () =>{
+//     let at = new Date()
+//     at.setHours(at.getHours() + 24*30)
+//     return Promise.resolve(at)
+//   })
+// }
 
-function _toDaumGameId(leagueNum, gameId, userPage) {
-  const nowPage = userPage || 1
-  const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
-  const matchYear = koreanMatchDate.format("YYYY")
-  const daumCpGameId = toDaumCpGameId(matchYear, leagueNum, gameId)
+// function _toDaumGameId(leagueNum, gameId, userPage) {
+//   const nowPage = userPage || 1
+//   const koreanMatchDate = moment((new Date()).getTime()).tz("Asia/Seoul")
+//   const matchYear = koreanMatchDate.format("YYYY")
+//   const daumCpGameId = toDaumCpGameId(matchYear, leagueNum, gameId)
+//   const param = {
+//     callback: 'callback',
+//     leagueCode: leagueNumToDaumLeagueCode(leagueNum),
+//     pageSize: 200,
+//     page: nowPage,
+//     fromDate: matchYear+'0201',
+//     toDate: matchYear+'1231'
+//   }
+//   const url = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(param)
+//   return axios.get(url)
+//   .then(res => eval('function callback(p) { return p }\n' + res.data))
+//   .then(res => res.list)
+//   .then(res => {
+//     if(res.length == 0) return undefined
+//     const cpGameId = res.filter(g => g['cpGameId'] == daumCpGameId)
+//     if(cpGameId.length > 0) return cpGameId[0]['gameId']
+//     else return _toDaumGameId(leagueNum, gameId, nowPage+1)
+//   })
+// }
+
+function toDaumGameId(leagueNum, teamId, matchDate) {
+  const koreanMatchDate = moment((new Date(matchDate)).getTime()).tz("Asia/Seoul")
+  const matchDateStr = koreanMatchDate.format("YYYYMMDD")
+  const daumTeamId = teamIdToDaumTeamId(leagueNum, teamId)
   const param = {
     callback: 'callback',
-    leagueCode: 'KL,KL_RELEGATION', //TODO: AFCCL 처리
+    leagueCode: leagueNumToDaumLeagueCode(leagueNum),
     pageSize: 200,
-    page: nowPage,
-    fromDate: matchYear+'0301',
-    toDate: matchYear+'1231'
+    page: 1,
+    fromDate: matchDateStr,
+    toDate: matchDateStr,
+    teamId: daumTeamId
   }
   const url = 'https://media.daum.net/proxy/hermes/api/game/list.json?'+querystring.stringify(param)
   return axios.get(url)
@@ -413,10 +455,28 @@ function _toDaumGameId(leagueNum, gameId, userPage) {
   .then(res => res.list)
   .then(res => {
     if(res.length == 0) return undefined
-    const cpGameId = res.filter(g => g['cpGameId'] == daumCpGameId)
-    if(cpGameId.length > 0) return cpGameId[0]['gameId']
-    else return _toDaumGameId(leagueNum, gameId, nowPage+1)
+    return res[0]['gameId']
   })
+}
+
+function teamIdToDaumTeamId(leagueNum, teamId) {
+  const teamIds = {
+    'K05': {
+      1: 5,
+      2: 5,
+      3: 27798
+    }
+  }
+  return teamIds[teamId][leagueNum]
+}
+
+function leagueNumToDaumLeagueCode(leagueNum) {
+  const leagueCodes = {
+    1: 'KL',
+    2: 'KL2',
+    3: 'AFCCL'
+  };
+  return leagueCodes[leagueNum]
 }
 
 function toDaumTeamId(teamId) {
@@ -452,10 +512,39 @@ function parseClub(clubDoc) {
             broadcasting: broadcasting.replace("<BR/>", "")\
           }\
         }'
+
+  const leagueJsStr = clubDoc.querySelectorAll('a.full-calendar-link')[0].getAttribute('onclick')
+  const leagueFsStr = 'function fn_detailPopup(Year,a,leagueName,c,leagueId,d) {  \
+          return { \
+            league_id: leagueId \
+          }\
+        }'
+
+  const leagueIdToleagueNum = (o) => {
+    let leagueNum = 0
+    switch(o.league_id) { 
+      case "2" :	// K리그1 
+        leagueNum = 1; 
+        break; 
+      case "3" :	// K리그2 
+        leagueNum = 2; 
+        break; 
+      case "4" :	// R리그 
+        break; 
+      case "6" :	// K리그 주니어 
+        break; 
+      default :	// 기타 
+        leagueNum = 3; 
+        break; 
+    }
+    return {league_num: leagueNum}
+  }
+
   if (clubDoc.querySelector('span.flR.pr5').textContent.trim().match(/\([0-9]+:[0-9]+\)/)) {
     scoreStr = clubDoc.querySelector('span.flR.pr5').textContent.trim().replace(/\(([0-9]+):([0-9]+)\)/, '$1:$2')
   }
-  return Object.assign({}, eval(fsStr + '\n' + jsStr), { score: scoreStr })
+
+  return Object.assign({}, eval(fsStr + '\n' + jsStr), leagueIdToleagueNum(eval(leagueFsStr + '\n' + leagueJsStr)), { score: scoreStr })
 }
 
 function nextMonthFirstDate(date) {
